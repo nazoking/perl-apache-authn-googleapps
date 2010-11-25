@@ -1,23 +1,42 @@
 package Apache::Authn::GoogleApps;
-=head1
+=head1 NAME
+
+Apache::Authn::GoogleApps - Apache Auth module by Google Apps Account
+
+=head1 SYNOPIS
+
 このファイルをコピー
  /usr/lib/perl5/Apache/Authn/GoogleApps.pm
 
+httpd.conf に
 
-httpd.conf
-
- PerlLoadModule Apache::Authn::GoogleApps
- <Location /svn>
+  PerlLoadModule Apache::Authn::GoogleApps
+  <Location /svn>
      AuthType Basic
-     AuthName Gapp
+     AuthName GoogleAccount
      Require valid-user
 
-     # ユーザ名入力時に補完するドメイン
-     GoogleAppsDomain         example.com
-     # キャッシュの保持時間（秒数)
-     GoogleAppsCacheCredsMax  3000
+     # ユーザ名に自動で補完するドメイン。
+     GoogleAppsDomain example.com
+     # 自動で補完するドメインをくっつけるタイミング。Always 常に None 付けない
+     # Auto ユーザ名に @ が入っていなければくっつける（hoge と入れたら hoge@example.com にして認証）
+     GoogleAppsDomainAppend Always
+     # 認証に成功したらその結果をサーバにキャッシュしている時間（秒数）
+     # キャッシュするけどスレッドごとに別っぽい（ARP::Pool）
+     GoogleAppsCacheCredsMax 3600
+
+     # ハンドラを使う宣言
      PerlAuthenHandler Apache::Authn::GoogleApps::handler
- </Location>
+  </Location>
+
+  and reload your apache
+
+=head1 Git URL
+  https://github.com/nazoking/perl-apache-authn-googleapps
+
+=head1 AUTHOR
+
+  nazoking "< nazoking@gmail.com >"
 
 =cut
 
@@ -43,6 +62,12 @@ my @directives = (
     errmsg => 'set your google apps domain ex "example.com"',
   },
   {
+    name => 'GoogleAppsDomainAppend',
+    req_override => OR_AUTHCFG, # allow overrides true
+    args_how => TAKE1,  # One argument only (full description)
+    errmsg => 'value select None|Always|Auto',
+  },
+  {
     name => 'GoogleAppsCacheCredsMax',
     req_override => OR_AUTHCFG, # allow overrides true
     args_how => TAKE1,  # One argument only (full description)
@@ -52,6 +77,7 @@ my @directives = (
 Apache2::Module::add(__PACKAGE__, \@directives);
 
 sub GoogleAppsDomain{ set_val("GoogleAppsDomain", @_); }
+sub GoogleAppsDomainAppend{ set_val("GoogleAppsDomainAppend", @_); }
 sub GoogleAppsCacheCredsMax {
   my ($self, $parms, $arg) = @_;
   if ($arg) {
@@ -66,15 +92,12 @@ sub set_val {
   $self->{$key} = $arg;
 }
 
-
 sub gapp_login{
   my $usr = shift;
   my $pass = shift;
   my $r = shift;
   my $lwp_object = LWP::UserAgent->new;
   my $url = 'https://www.google.com/accounts/ClientLogin';
-
-  $r->log_reason("authentication request to $url !! $usr ".time());
 
   my $response = $lwp_object->post( $url, [
     'accountType' => 'HOSTED',
@@ -97,7 +120,6 @@ sub cache_login_check{
 sub cache_reflesh{
   my $cfg = shift;
   my $r = shift;
-  $r->log_reason("cache_reflesh".(keys( %{$cfg->{GoogleAppsCacheCreds}} ) )." items");
   foreach my $key ( keys %{$cfg->{GoogleAppsCacheCreds}} ){
     my ( $ct, $cp ) = split(':',$cfg->{GoogleAppsCacheCreds}->get($key),2);
     if( $ct < time() ){
@@ -121,7 +143,7 @@ sub handler {
   my $usr = $r->user;
 
   return $st unless $st == Apache2::Const::OK;
-  $usr .= "@".$cfg->{GoogleAppsDomain} if $usr !~ /@/; 
+  $usr .= '@'.$cfg->{GoogleAppsDomain} if ( $cfg->{GoogleAppsDomainAppend} eq 'Auto' && $usr !~ /@/ ) || $cfg->{GoogleAppsDomainAppend} ne 'None'; 
 
   if( defined $usr && defined $pw ){
     if( cache_login_check( $usr, $pw, $cfg, $r ) ){

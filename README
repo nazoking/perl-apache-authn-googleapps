@@ -1,0 +1,28 @@
+NAME
+  Apache::Authn::GoogleApps - Apache Auth module by Google Apps Account
+
+SYNOPIS
+
+  in httpd.conf
+
+  PerlLoadModule Apache::Authn::GoogleApps
+  <Location /svn>
+     AuthType Basic
+     AuthName Gapp
+     Require valid-user
+
+     # auto complement domain
+     GoogleAppsDomain example.com
+     # cache limit time ( seconds )
+     GoogleAppsCacheCredsMax 3000
+     PerlAuthenHandler Apache::Authn::GoogleApps::handler
+  </Location>
+
+  and reload your apache
+
+Git URL
+  https://github.com/nazoking/perl-apache-authn-googleapps
+
+AUTHOR
+  nazoking "< nazoking@gmail.com >"
+
